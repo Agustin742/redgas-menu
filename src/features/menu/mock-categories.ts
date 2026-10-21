@@ -6,4 +6,5 @@ export const redGasCategories: MenuCategory[] = [
   { id: "meriendas", name: "Meriendas" },
   { id: "pasteleria", name: "Pastelería" },
   { id: "bebidas", name: "Bebidas" },
+  { id: "salados", name: "Salados" },
 ];

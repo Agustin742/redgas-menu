@@ -12,12 +12,24 @@ export type MenuCategory = {
   name: string;
 };
 
-export type MenuProduct = {
+type MenuProductDetails = {
   id: string;
   categoryId: MenuCategory["id"];
   name: string;
   description: string;
   priceInArs: number;
-  image: string;
-  imageAlt: string;
+  featured: boolean;
+};
+
+export type MenuProduct = MenuProductDetails &
+  (
+    | { image: string; imageAlt: string }
+    | { image?: never; imageAlt?: never }
+  );
+
+export type MenuFooterData = {
+  location: string;
+  openingHours: string;
+  contactEmail: string;
+  socials: { name: string; handle: string }[];
 };

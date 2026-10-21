@@ -1,4 +1,4 @@
-import type { MenuBusiness } from "@/features/menu/types";
+import type { MenuBusiness, MenuFooterData } from "@/features/menu/types";
 
 export const redGasBusiness: MenuBusiness = {
   name: "Red Gas",
@@ -7,4 +7,14 @@ export const redGasBusiness: MenuBusiness = {
   openingHours: "Todos los días · 8:00 a 20:00",
   logoImage: "/logo-red-gas-mockup.jpg",
   headerBackgroundImage: "/menu-header-background-mockup.png",
+};
+
+export const redGasFooter: MenuFooterData = {
+  location: redGasBusiness.location,
+  openingHours: redGasBusiness.openingHours,
+  contactEmail: "hola@redgas.example",
+  socials: [
+    { name: "Instagram", handle: "@redgas.ejemplo" },
+    { name: "Facebook", handle: "Red Gas · página de ejemplo" },
+  ],
 };
