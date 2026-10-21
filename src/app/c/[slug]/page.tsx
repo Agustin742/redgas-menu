@@ -17,20 +17,22 @@ export default async function PublicMenuPage({
     notFound();
   }
 
+  const categoriesWithProducts = redGasCategories.filter((category) =>
+    redGasMockProducts.some((product) => product.categoryId === category.id),
+  );
+
   return (
     <main className="min-h-screen bg-cream">
       <MenuHeader business={redGasBusiness} />
       <CategoryNav categories={redGasCategories} />
-      <CategorySection
-        category={redGasCategories[0]}
-        products={redGasMockProducts}
-        background="cream"
-      />
-      <CategorySection
-        category={redGasCategories[4]}
-        products={redGasMockProducts}
-        background="white"
-      />
+      {categoriesWithProducts.map((category, index) => (
+        <CategorySection
+          key={category.id}
+          category={category}
+          products={redGasMockProducts}
+          background={index % 2 === 0 ? "cream" : "white"}
+        />
+      ))}
     </main>
   );
 }
