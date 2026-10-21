@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --cream: #fff7e9;
+  --espresso: #24150e;
+  --roast: #684021;
+  --coffee-yellow: #f5b923;
+  --energy-orange: #ff8a00;
+  --border: #e4d1b7;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-cream: var(--cream);
+  --color-espresso: var(--espresso);
+  --color-roast: var(--roast);
+  --color-coffee-yellow: var(--coffee-yellow);
+  --color-energy-orange: var(--energy-orange);
+  --color-warm-border: var(--border);
+  --font-sans: "DM Sans", sans-serif;
+  --font-display: "Archivo Black", sans-serif;
+  --font-accent: "Bree Serif", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--espresso);
+  font-family: "DM Sans", sans-serif;
+}
+
+.menu-header {
+  background-color: var(--espresso);
+  background-image: var(--header-background);
+  background-position: center;
+  background-size: cover;
+}
+
+.menu-header__overlay {
+  background: linear-gradient(
+    90deg,
+    rgb(36 21 14 / 92%) 0%,
+    rgb(36 21 14 / 82%) 48%,
+    rgb(36 21 14 / 55%) 100%
+  );
+}
+
+@media (max-width: 639px) {
+  .menu-header {
+    background-position: 62% center;
+  }
+
+  .menu-header__overlay {
+    background: linear-gradient(
+      180deg,
+      rgb(36 21 14 / 72%) 0%,
+      rgb(36 21 14 / 88%) 45%,
+      rgb(36 21 14 / 96%) 100%
+    );
+  }
+}
+
+::selection {
+  background: var(--coffee-yellow);
+  color: var(--espresso);
+}
