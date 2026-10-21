@@ -6,3 +6,8 @@ export type MenuBusiness = {
   logoImage: string;
   headerBackgroundImage: string;
 };
+
+export type MenuCategory = {
+  id: string;
+  name: string;
+};
