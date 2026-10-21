@@ -11,3 +11,12 @@ export type MenuCategory = {
   id: string;
   name: string;
 };
+
+export type MenuProduct = {
+  id: string;
+  name: string;
+  description: string;
+  priceInArs: number;
+  image: string;
+  imageAlt: string;
+};
