@@ -24,9 +24,6 @@ export function CategoryNav({ categories }: CategoryNavProps) {
         >
           Categorías de ejemplo
         </h2>
-        <p className="mt-1 text-sm leading-relaxed text-roast sm:text-base">
-          Muy pronto vas a encontrar nuestros productos.
-        </p>
       </div>
 
       <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] touch-pan-x sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">

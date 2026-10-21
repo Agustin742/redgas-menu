@@ -14,6 +14,7 @@ export type MenuCategory = {
 
 export type MenuProduct = {
   id: string;
+  categoryId: MenuCategory["id"];
   name: string;
   description: string;
   priceInArs: number;
