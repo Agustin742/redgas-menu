@@ -27,6 +27,12 @@ export type MenuProduct = MenuProductDetails &
     | { image?: never; imageAlt?: never }
   );
 
+export type MenuPromotion = {
+  id: string;
+  image: string;
+  imageAlt: string;
+};
+
 export type MenuFooterData = {
   location: string;
   openingHours: string;
