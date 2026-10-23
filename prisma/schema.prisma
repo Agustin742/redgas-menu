@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  WHATSAPP
+  X
+  WEBSITE
+}
+
+model Business {
+  id                  String         @id @default(cuid())
+  slug                String         @unique
+  name                String
+  description         String
+  location            String
+  logoUrl             String
+  logoPublicId        String?
+  headerImageUrl      String
+  headerImagePublicId String?
+  contactEmail        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  users               User[]
+  categories          Category[]
+  products            Product[]
+  promotions          Promotion[]
+  socialLinks         SocialLink[]
+  openingHours        OpeningHours[]
+
+  @@map("businesses")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  businessId   String
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("users")
+}
+
+model Category {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  position   Int
+  isVisible  Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products   Product[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+  @@map("categories")
+}
+
+// Product.businessId must match its category's businessId (enforced by application code).
+model Product {
+  id            String   @id @default(cuid())
+  businessId    String
+  categoryId    String
+  name          String
+  description   String
+  priceCents    Int
+  imageUrl      String?
+  imagePublicId String?
+  imageAlt      String?
+  isAvailable   Boolean  @default(true)
+  isFeatured    Boolean  @default(false)
+  position      Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+model Promotion {
+  id            String    @id @default(cuid())
+  businessId    String
+  imageUrl      String
+  imagePublicId String?
+  imageAlt      String
+  position      Int
+  isActive      Boolean   @default(true)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  business      Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("promotions")
+}
+
+model SocialLink {
+  id         String         @id @default(cuid())
+  businessId String
+  platform   SocialPlatform
+  handle     String
+  url        String?
+  position   Int
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("social_links")
+}
+
+model OpeningHours {
+  id         String   @id @default(cuid())
+  businessId String
+  dayOfWeek  Int // 0 = Sunday ... 6 = Saturday
+  opensAt    String // "HH:mm"
+  closesAt   String // "HH:mm"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, dayOfWeek, opensAt])
+  @@index([businessId])
+  @@map("opening_hours")
+}

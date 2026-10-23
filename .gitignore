@@ -4,3 +4,9 @@ odd/
 docs/
 node_modules/
 .next/
+
+# Environment and generated Prisma client
+.env
+.env*.local
+!.env.example
+src/generated/prisma/
