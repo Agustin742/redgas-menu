@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
 import { HttpError } from "@/server/http";
 import {
   assertLoginAllowed,
@@ -53,4 +53,32 @@ export async function login(
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
     business: user.business,
   };
+}
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(200),
+    newPassword: z.string().min(8).max(200),
+  })
+  .refine((value) => value.newPassword !== value.currentPassword, {
+    path: ["newPassword"],
+    message: "Must differ from the current password",
+  });
+
+export async function changePassword(
+  session: Session,
+  input: z.infer<typeof changePasswordSchema>,
+) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: session.user.id },
+    select: { passwordHash: true },
+  });
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    // 400, not 401: the session itself is still valid.
+    throw new HttpError(400, "invalid_password", "Current password is incorrect");
+  }
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { passwordHash: await hashPassword(input.newPassword) },
+  });
 }

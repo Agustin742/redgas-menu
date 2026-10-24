@@ -143,6 +143,53 @@ async function main() {
   check("closes before opens is 400", (await owner.request("PUT", "/api/admin/business/opening-hours", { hours: [{ dayOfWeek: 1, opensAt: "20:00", closesAt: "08:00" }] })).status === 400);
   check("replaces opening hours", (await owner.request("PUT", "/api/admin/business/opening-hours", { hours: hours.map(({ dayOfWeek, opensAt, closesAt }) => ({ dayOfWeek, opensAt, closesAt })) })).status < 300);
 
+  console.log("staff");
+  const staffEmail = `smoke-staff-${Date.now()}@example.com`;
+  const staffPassword = "staff-password-1";
+  const newStaffPassword = "staff-password-2";
+  try {
+    const listedStaff = await owner.request("GET", "/api/admin/staff");
+    check("owner lists staff (includes owner, no password hash)", listedStaff.status === 200 && (listedStaff.data as { email: string }[]).some((u) => u.email.toLowerCase() === email.toLowerCase()) && !JSON.stringify(listedStaff.data).includes("passwordHash"), listedStaff);
+    const staffBody = { email: staffEmail, name: "Smoke Staff", password: staffPassword };
+    const createdStaff = await owner.request("POST", "/api/admin/staff", staffBody);
+    check("creates staff 201 with role STAFF", createdStaff.status === 201 && createdStaff.data.role === "STAFF" && createdStaff.data.passwordHash === undefined, createdStaff);
+    const staffId = (createdStaff.data as WithId).id;
+    check("duplicate email (different case) is 409", (await owner.request("POST", "/api/admin/staff", { ...staffBody, email: staffEmail.toUpperCase() })).status === 409);
+    check("short staff password is 400", (await owner.request("POST", "/api/admin/staff", { ...staffBody, email: `short-${staffEmail}`, password: "short" })).status === 400);
+
+    const staff = new Client("", freshIp());
+    check("staff logs in", (await staff.login(staffEmail, staffPassword)).status === 200);
+    check("staff lists categories", (await staff.request("GET", "/api/admin/categories")).status === 200);
+    const staffCategory = await staff.request("POST", "/api/admin/categories", { name: "Smoke staff categoría" });
+    check("staff creates category 201", staffCategory.status === 201, staffCategory);
+    check("staff deletes category 204", (await staff.request("DELETE", `/api/admin/categories/${(staffCategory.data as WithId).id}`)).status === 204);
+    check("staff GET business is 403", (await staff.request("GET", "/api/admin/business")).status === 403);
+    check("staff PATCH business is 403", (await staff.request("PATCH", "/api/admin/business", { description: "hacked" })).status === 403);
+    check("staff PUT social links is 403", (await staff.request("PUT", "/api/admin/business/social-links", { links: [] })).status === 403);
+    check("staff PUT opening hours is 403", (await staff.request("PUT", "/api/admin/business/opening-hours", { hours: [] })).status === 403);
+    const forbidden = await staff.request("GET", "/api/admin/staff");
+    check("staff GET staff is 403 forbidden", forbidden.status === 403 && forbidden.data?.error?.code === "forbidden", forbidden);
+    check("staff POST staff is 403", (await staff.request("POST", "/api/admin/staff", { ...staffBody, email: `other-${staffEmail}` })).status === 403);
+    check("staff DELETE staff is 403", (await staff.request("DELETE", `/api/admin/staff/${staffId}`)).status === 403);
+
+    const ownerId = ((await owner.request("GET", "/api/auth/me")).data as { user: WithId }).user.id;
+    const selfRemoval = await owner.request("DELETE", `/api/admin/staff/${ownerId}`);
+    check("owner cannot remove self (409 cannot_remove_self)", selfRemoval.status === 409 && selfRemoval.data?.error?.code === "cannot_remove_self", selfRemoval);
+
+    check("password change with wrong current is 400", (await staff.request("POST", "/api/auth/password", { currentPassword: "wrong-password", newPassword: newStaffPassword })).status === 400);
+    check("password change to the same password is 400", (await staff.request("POST", "/api/auth/password", { currentPassword: staffPassword, newPassword: staffPassword })).status === 400);
+    check("password change succeeds 204", (await staff.request("POST", "/api/auth/password", { currentPassword: staffPassword, newPassword: newStaffPassword })).status === 204);
+    check("login with new password is 200", (await new Client("", freshIp()).login(staffEmail, newStaffPassword)).status === 200);
+    check("login with old password is 401", (await new Client("", freshIp()).login(staffEmail, staffPassword)).status === 401);
+    check("anonymous password change is 401", (await anonymous.request("POST", "/api/auth/password", { currentPassword: "x", newPassword: newStaffPassword })).status === 401);
+
+    check("owner removes staff 204", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 204);
+    check("removed staff session is 401", (await staff.request("GET", "/api/auth/me")).status === 401);
+    check("removing again is 404", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 404);
+  } finally {
+    await prisma.user.deleteMany({ where: { email: { endsWith: staffEmail } } });
+  }
+
   console.log("tenant isolation");
   const intruderEmail = `smoke-intruder-${Date.now()}@example.com`;
   const intruderBusiness = await prisma.business.create({
@@ -156,6 +203,15 @@ async function main() {
       users: { create: { email: intruderEmail, name: "Intruder", passwordHash: await hashPassword("intruder-password") } },
     },
   });
+  const victimStaff = await prisma.user.create({
+    data: {
+      businessId: (await prisma.business.findUniqueOrThrow({ where: { slug: "red-gas" }, select: { id: true } })).id,
+      email: `smoke-victim-${Date.now()}@example.com`,
+      name: "Smoke Victim",
+      role: "STAFF",
+      passwordHash: await hashPassword("victim-password"),
+    },
+  });
   try {
     const intruder = new Client("", freshIp());
     check("intruder logs in", (await intruder.login(intruderEmail, "intruder-password")).status === 200);
@@ -166,7 +222,12 @@ async function main() {
     check("intruder cannot create product in foreign category", [400, 404].includes((await intruder.request("POST", "/api/admin/products", { categoryId: victimId, name: "x", description: "", priceCents: 1 })).status));
     check("intruder cannot delete foreign promotion (404)", (await intruder.request("DELETE", `/api/admin/promotions/${originalPromotions[0].id}`)).status === 404);
     check("intruder cannot reorder foreign categories", (await intruder.request("PUT", "/api/admin/categories/order", { ids: originalCategories.map((c) => c.id) })).status === 400);
+    const intruderStaff = (await intruder.request("GET", "/api/admin/staff")).data as { email: string }[];
+    check("intruder sees only its own users", intruderStaff.length === 1 && intruderStaff[0].email === intruderEmail, intruderStaff);
+    check("intruder cannot delete foreign staff (404)", (await intruder.request("DELETE", `/api/admin/staff/${victimStaff.id}`)).status === 404);
+    check("foreign staff still exists", (await prisma.user.count({ where: { id: victimStaff.id } })) === 1);
   } finally {
+    await prisma.user.deleteMany({ where: { id: victimStaff.id } });
     await prisma.business.delete({ where: { id: intruderBusiness.id } });
   }
 

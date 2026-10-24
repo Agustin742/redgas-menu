@@ -104,3 +104,12 @@ export async function requireSession(): Promise<Session> {
   }
   return session;
 }
+
+/** Like requireSession, but only the business OWNER passes. */
+export async function requireOwner(): Promise<Session> {
+  const session = await requireSession();
+  if (session.user.role !== "OWNER") {
+    throw new HttpError(403, "forbidden", "Owner role required");
+  }
+  return session;
+}
