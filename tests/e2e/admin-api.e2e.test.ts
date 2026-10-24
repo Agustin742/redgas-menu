@@ -1,0 +1,305 @@
+// End-to-end test for the admin API. Run against a started server:
+//   pnpm start   (in another terminal)
+//   pnpm test:e2e
+// Uses SEED_OWNER_EMAIL / SEED_OWNER_PASSWORD from .env and restores all data it touches.
+// Sections share state and must run in order (jest --runInBand, one file).
+import "dotenv/config";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaClient } from "@/generated/prisma/client";
+import { hashPassword } from "@/lib/password";
+
+const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+const prisma = new PrismaClient({
+  adapter: new PrismaNeon({ connectionString: process.env.DIRECT_URL! }),
+});
+
+function check(label: string, condition: boolean, detail?: unknown) {
+  if (!condition) {
+    throw new Error(`${label}${detail === undefined ? "" : ` -> ${JSON.stringify(detail)}`}`);
+  }
+}
+
+// Fake client IPs (RFC 5737 / private ranges) so runs never lock the real owner.
+const usedIps: string[] = [];
+function freshIp() {
+  const rand = () => 1 + Math.floor(Math.random() * 254);
+  const ip = `10.${rand()}.${rand()}.${rand()}`;
+  usedIps.push(ip);
+  return ip;
+}
+
+class Client {
+  constructor(
+    private cookie = "",
+    private ip?: string,
+  ) {}
+
+  async request(method: string, path: string, body?: unknown) {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...(this.cookie ? { cookie: this.cookie } : {}),
+        ...(this.ip ? { "x-forwarded-for": this.ip } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const setCookie = response.headers.get("set-cookie");
+    if (setCookie) this.cookie = setCookie.split(";")[0];
+    const text = await response.text();
+    return {
+      status: response.status,
+      data: text ? JSON.parse(text) : null,
+      retryAfter: response.headers.get("retry-after"),
+    };
+  }
+
+  login(email: string, password: string) {
+    return this.request("POST", "/api/auth/login", { email, password });
+  }
+}
+
+type WithId = { id: string };
+
+const email = process.env.SEED_OWNER_EMAIL!;
+const password = process.env.SEED_OWNER_PASSWORD!;
+const owner = new Client("", freshIp());
+const anonymous = new Client("", freshIp());
+
+// State shared between sections.
+let originalCategories: WithId[];
+let originalPromotions: WithId[];
+let category: WithId & { name: string };
+
+afterAll(async () => {
+  await prisma.loginAttempt.deleteMany({ where: { ip: { in: usedIps } } });
+  await prisma.$disconnect();
+});
+
+describe("auth", () => {
+  test("rejects anonymous, wrong and forged credentials, then logs in", async () => {
+    check("anonymous admin request is 401", (await anonymous.request("GET", "/api/admin/categories")).status === 401);
+    check("me without session is 401", (await anonymous.request("GET", "/api/auth/me")).status === 401);
+    check("wrong password is 401", (await anonymous.login(email, `${password}-wrong`)).status === 401);
+    check("unknown email is 401", (await anonymous.login("nobody@example.com", password)).status === 401);
+    check("forged cookie is 401", (await new Client("session=eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.", freshIp()).request("GET", "/api/admin/categories")).status === 401);
+    const login = await owner.login(email.toUpperCase(), password);
+    check("login succeeds (case-insensitive email)", login.status === 200 && login.data?.business?.slug === "red-gas", login);
+    check("me returns session", (await owner.request("GET", "/api/auth/me")).status === 200);
+    check("invalid JSON body is 400", (await owner.request("POST", "/api/admin/categories", "{oops")).status === 400);
+  });
+});
+
+describe("categories", () => {
+  test("lists, creates, validates, updates and reorders", async () => {
+    originalCategories = (await owner.request("GET", "/api/admin/categories")).data as WithId[];
+    check("lists 6 categories", originalCategories.length === 6, originalCategories.length);
+    const created = await owner.request("POST", "/api/admin/categories", { name: "Smoke categoría" });
+    check("creates category 201", created.status === 201, created);
+    category = created.data as WithId & { name: string };
+    check("duplicate name is 409", (await owner.request("POST", "/api/admin/categories", { name: "Smoke categoría" })).status === 409);
+    check("empty name is 400", (await owner.request("POST", "/api/admin/categories", { name: "" })).status === 400);
+    const renamed = await owner.request("PATCH", `/api/admin/categories/${category.id}`, { name: "Smoke renombrada", isVisible: false });
+    check("updates category", renamed.status === 200 && renamed.data.name === "Smoke renombrada", renamed);
+    const reversed = [...originalCategories.map((c) => c.id), category.id].reverse();
+    check("reorders categories", (await owner.request("PUT", "/api/admin/categories/order", { ids: reversed })).status < 300);
+    check("reorder with missing ids is 400", (await owner.request("PUT", "/api/admin/categories/order", { ids: reversed.slice(1) })).status === 400);
+  });
+});
+
+describe("products", () => {
+  test("creates, validates, updates, duplicates, reorders and deletes", async () => {
+    const product = await owner.request("POST", "/api/admin/products", {
+      categoryId: category.id,
+      name: "Smoke producto",
+      description: "Prueba",
+      priceCents: 123456,
+    });
+    check("creates product 201", product.status === 201 && product.data.priceCents === 123456, product);
+    const productId = (product.data as WithId).id;
+    check("negative price is 400", (await owner.request("POST", "/api/admin/products", { categoryId: category.id, name: "x", description: "", priceCents: -1 })).status === 400);
+    check("javascript: image url is 400", (await owner.request("POST", "/api/admin/products", { categoryId: category.id, name: "x", description: "", priceCents: 1, imageUrl: "javascript:alert(1)", imageAlt: "x" })).status === 400);
+    check("category with products cannot be deleted (409)", (await owner.request("DELETE", `/api/admin/categories/${category.id}`)).status === 409);
+    const toggled = await owner.request("PATCH", `/api/admin/products/${productId}`, { isAvailable: false, priceCents: 99900 });
+    check("updates product", toggled.status === 200 && toggled.data.isAvailable === false && toggled.data.priceCents === 99900, toggled);
+    const duplicate = await owner.request("POST", `/api/admin/products/${productId}/duplicate`);
+    check("duplicates product", duplicate.status === 201 && String(duplicate.data.name).includes("(copia)"), duplicate);
+    const listed = (await owner.request("GET", `/api/admin/products?categoryId=${category.id}`)).data as WithId[];
+    check("lists products by category", listed.length === 2, listed.length);
+    check("reorders products", (await owner.request("PUT", "/api/admin/products/order", { categoryId: category.id, ids: listed.map((p) => p.id).reverse() })).status < 300);
+    for (const item of listed) {
+      check("deletes product", (await owner.request("DELETE", `/api/admin/products/${item.id}`)).status === 204);
+    }
+    check("deleted product is 404", (await owner.request("PATCH", `/api/admin/products/${productId}`, { name: "x" })).status === 404);
+  });
+});
+
+describe("promotions", () => {
+  test("creates, validates, reorders and deletes", async () => {
+    originalPromotions = (await owner.request("GET", "/api/admin/promotions")).data as WithId[];
+    const promotion = await owner.request("POST", "/api/admin/promotions", { imageUrl: "/promo1-mockup.png", imageAlt: "Smoke promo" });
+    check("creates promotion", promotion.status === 201, promotion);
+    const promotionId = (promotion.data as WithId).id;
+    check("endsAt before startsAt is 400", (await owner.request("PATCH", `/api/admin/promotions/${promotionId}`, { startsAt: "2026-12-10T00:00:00Z", endsAt: "2026-12-01T00:00:00Z" })).status === 400);
+    check("reorders promotions", (await owner.request("PUT", "/api/admin/promotions/order", { ids: [promotionId, ...originalPromotions.map((p) => p.id)] })).status < 300);
+    check("deletes promotion", (await owner.request("DELETE", `/api/admin/promotions/${promotionId}`)).status === 204);
+    check("restores promotion order", (await owner.request("PUT", "/api/admin/promotions/order", { ids: originalPromotions.map((p) => p.id) })).status < 300);
+  });
+});
+
+describe("business", () => {
+  test("updates profile, social links and opening hours", async () => {
+    const business = (await owner.request("GET", "/api/admin/business")).data;
+    const patched = await owner.request("PATCH", "/api/admin/business", { description: "Smoke descripción" });
+    check("updates business profile", patched.status === 200 && patched.data.description === "Smoke descripción", patched);
+    check("slug is not editable", (await owner.request("GET", "/api/admin/business")).data.slug === "red-gas");
+    await owner.request("PATCH", "/api/admin/business", { description: business.description });
+    const { links } = (await owner.request("GET", "/api/admin/business/social-links")).data as { links: { platform: string; handle: string; url: string | null }[] };
+    check("replaces social links", (await owner.request("PUT", "/api/admin/business/social-links", { links: [{ platform: "TIKTOK", handle: "@smoke" }] })).status < 300);
+    check("unknown platform is 400", (await owner.request("PUT", "/api/admin/business/social-links", { links: [{ platform: "MYSPACE", handle: "x" }] })).status === 400);
+    await owner.request("PUT", "/api/admin/business/social-links", { links: links.map(({ platform, handle, url }) => ({ platform, handle, ...(url ? { url } : {}) })) });
+    const { hours } = (await owner.request("GET", "/api/admin/business/opening-hours")).data as { hours: { dayOfWeek: number; opensAt: string; closesAt: string }[] };
+    check("overlapping hours are 400", (await owner.request("PUT", "/api/admin/business/opening-hours", { hours: [{ dayOfWeek: 1, opensAt: "08:00", closesAt: "12:00" }, { dayOfWeek: 1, opensAt: "11:00", closesAt: "14:00" }] })).status === 400);
+    check("closes before opens is 400", (await owner.request("PUT", "/api/admin/business/opening-hours", { hours: [{ dayOfWeek: 1, opensAt: "20:00", closesAt: "08:00" }] })).status === 400);
+    check("replaces opening hours", (await owner.request("PUT", "/api/admin/business/opening-hours", { hours: hours.map(({ dayOfWeek, opensAt, closesAt }) => ({ dayOfWeek, opensAt, closesAt })) })).status < 300);
+  });
+});
+
+describe("staff", () => {
+  const staffEmail = `smoke-staff-${Date.now()}@example.com`;
+  const staffPassword = "staff-password-1";
+  const newStaffPassword = "staff-password-2";
+  let staffId: string | undefined;
+
+  // Safety net: remove the staff user by id (or exact email when creation was not observed).
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: staffId ? { id: staffId } : { email: staffEmail } });
+  });
+
+  test("owner manages staff and staff permissions are limited", async () => {
+    const listedStaff = await owner.request("GET", "/api/admin/staff");
+    check("owner lists staff (includes owner, no password hash)", listedStaff.status === 200 && (listedStaff.data as { email: string }[]).some((u) => u.email.toLowerCase() === email.toLowerCase()) && !JSON.stringify(listedStaff.data).includes("passwordHash"), listedStaff);
+    const staffBody = { email: staffEmail, name: "Smoke Staff", password: staffPassword };
+    const createdStaff = await owner.request("POST", "/api/admin/staff", staffBody);
+    check("creates staff 201 with role STAFF", createdStaff.status === 201 && createdStaff.data.role === "STAFF" && createdStaff.data.passwordHash === undefined, createdStaff);
+    staffId = (createdStaff.data as WithId).id;
+    check("duplicate email (different case) is 409", (await owner.request("POST", "/api/admin/staff", { ...staffBody, email: staffEmail.toUpperCase() })).status === 409);
+    check("short staff password is 400", (await owner.request("POST", "/api/admin/staff", { ...staffBody, email: `short-${staffEmail}`, password: "short" })).status === 400);
+
+    const staff = new Client("", freshIp());
+    check("staff logs in", (await staff.login(staffEmail, staffPassword)).status === 200);
+    check("staff lists categories", (await staff.request("GET", "/api/admin/categories")).status === 200);
+    const staffCategory = await staff.request("POST", "/api/admin/categories", { name: "Smoke staff categoría" });
+    check("staff creates category 201", staffCategory.status === 201, staffCategory);
+    check("staff deletes category 204", (await staff.request("DELETE", `/api/admin/categories/${(staffCategory.data as WithId).id}`)).status === 204);
+    check("staff GET business is 403", (await staff.request("GET", "/api/admin/business")).status === 403);
+    check("staff PATCH business is 403", (await staff.request("PATCH", "/api/admin/business", { description: "hacked" })).status === 403);
+    check("staff PUT social links is 403", (await staff.request("PUT", "/api/admin/business/social-links", { links: [] })).status === 403);
+    check("staff PUT opening hours is 403", (await staff.request("PUT", "/api/admin/business/opening-hours", { hours: [] })).status === 403);
+    const forbidden = await staff.request("GET", "/api/admin/staff");
+    check("staff GET staff is 403 forbidden", forbidden.status === 403 && forbidden.data?.error?.code === "forbidden", forbidden);
+    check("staff POST staff is 403", (await staff.request("POST", "/api/admin/staff", { ...staffBody, email: `other-${staffEmail}` })).status === 403);
+    check("staff DELETE staff is 403", (await staff.request("DELETE", `/api/admin/staff/${staffId}`)).status === 403);
+
+    const ownerId = ((await owner.request("GET", "/api/auth/me")).data as { user: WithId }).user.id;
+    const selfRemoval = await owner.request("DELETE", `/api/admin/staff/${ownerId}`);
+    check("owner cannot remove self (409 cannot_remove_self)", selfRemoval.status === 409 && selfRemoval.data?.error?.code === "cannot_remove_self", selfRemoval);
+
+    check("password change with wrong current is 400", (await staff.request("POST", "/api/auth/password", { currentPassword: "wrong-password", newPassword: newStaffPassword })).status === 400);
+    check("password change to the same password is 400", (await staff.request("POST", "/api/auth/password", { currentPassword: staffPassword, newPassword: staffPassword })).status === 400);
+    check("password change succeeds 204", (await staff.request("POST", "/api/auth/password", { currentPassword: staffPassword, newPassword: newStaffPassword })).status === 204);
+    check("login with new password is 200", (await new Client("", freshIp()).login(staffEmail, newStaffPassword)).status === 200);
+    check("login with old password is 401", (await new Client("", freshIp()).login(staffEmail, staffPassword)).status === 401);
+    check("anonymous password change is 401", (await anonymous.request("POST", "/api/auth/password", { currentPassword: "x", newPassword: newStaffPassword })).status === 401);
+
+    check("owner removes staff 204", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 204);
+    check("removed staff session is 401", (await staff.request("GET", "/api/auth/me")).status === 401);
+    check("removing again is 404", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 404);
+  });
+});
+
+describe("tenant isolation", () => {
+  const intruderEmail = `smoke-intruder-${Date.now()}@example.com`;
+  let intruderBusinessId: string | undefined;
+  let victimStaffId: string | undefined;
+
+  beforeAll(async () => {
+    const intruderBusiness = await prisma.business.create({
+      data: {
+        slug: `smoke-${Date.now()}`,
+        name: "Smoke Café",
+        description: "",
+        location: "",
+        logoUrl: "/logo-red-gas-mockup.jpg",
+        headerImageUrl: "/menu-header-background-mockup.png",
+        users: { create: { email: intruderEmail, name: "Intruder", passwordHash: await hashPassword("intruder-password") } },
+      },
+    });
+    intruderBusinessId = intruderBusiness.id;
+    const victimStaff = await prisma.user.create({
+      data: {
+        businessId: (await prisma.business.findUniqueOrThrow({ where: { slug: "red-gas" }, select: { id: true } })).id,
+        email: `smoke-victim-${Date.now()}@example.com`,
+        name: "Smoke Victim",
+        role: "STAFF",
+        passwordHash: await hashPassword("victim-password"),
+      },
+    });
+    victimStaffId = victimStaff.id;
+  });
+
+  afterAll(async () => {
+    if (victimStaffId) await prisma.user.deleteMany({ where: { id: victimStaffId } });
+    if (intruderBusinessId) await prisma.business.delete({ where: { id: intruderBusinessId } });
+  });
+
+  test("another business cannot read or change red-gas data", async () => {
+    const intruder = new Client("", freshIp());
+    check("intruder logs in", (await intruder.login(intruderEmail, "intruder-password")).status === 200);
+    check("intruder sees no categories", ((await intruder.request("GET", "/api/admin/categories")).data as unknown[]).length === 0);
+    const victimId = originalCategories[0].id;
+    check("intruder cannot edit foreign category (404)", (await intruder.request("PATCH", `/api/admin/categories/${victimId}`, { name: "hacked" })).status === 404);
+    check("intruder cannot delete foreign category (404)", (await intruder.request("DELETE", `/api/admin/categories/${victimId}`)).status === 404);
+    check("intruder cannot create product in foreign category", [400, 404].includes((await intruder.request("POST", "/api/admin/products", { categoryId: victimId, name: "x", description: "", priceCents: 1 })).status));
+    check("intruder cannot delete foreign promotion (404)", (await intruder.request("DELETE", `/api/admin/promotions/${originalPromotions[0].id}`)).status === 404);
+    check("intruder cannot reorder foreign categories", (await intruder.request("PUT", "/api/admin/categories/order", { ids: originalCategories.map((c) => c.id) })).status === 400);
+    const intruderStaff = (await intruder.request("GET", "/api/admin/staff")).data as { email: string }[];
+    check("intruder sees only its own users", intruderStaff.length === 1 && intruderStaff[0].email === intruderEmail, intruderStaff);
+    check("intruder cannot delete foreign staff (404)", (await intruder.request("DELETE", `/api/admin/staff/${victimStaffId}`)).status === 404);
+    check("foreign staff still exists", (await prisma.user.count({ where: { id: victimStaffId } })) === 1);
+  });
+});
+
+describe("rate limit", () => {
+  test("locks out after 5 failures per email+IP and resets on success", async () => {
+    const wrong = `${password}-wrong`;
+    const blocked = new Client("", freshIp());
+    for (let i = 1; i <= 5; i++) {
+      check(`wrong attempt ${i} is 401`, (await blocked.login(email, wrong)).status === 401);
+    }
+    const limited = await blocked.login(email, wrong);
+    check("6th attempt is 429 too_many_attempts", limited.status === 429 && limited.data?.error?.code === "too_many_attempts", limited);
+    check("429 has numeric Retry-After >= 1", Number(limited.retryAfter) >= 1, limited.retryAfter);
+    check("correct password from blocked IP is still 429", (await blocked.login(email, password)).status === 429);
+    check("correct password from another IP is 200", (await new Client("", freshIp()).login(email, password)).status === 200);
+    const resetting = new Client("", freshIp());
+    for (let i = 1; i <= 4; i++) await resetting.login(email, wrong);
+    check("login after 4 failures succeeds", (await resetting.login(email, password)).status === 200);
+    check("success cleared the counter (next failure is 401)", (await resetting.login(email, wrong)).status === 401);
+    await prisma.loginAttempt.deleteMany({ where: { ip: { in: usedIps } } });
+  });
+});
+
+describe("cleanup", () => {
+  test("removes smoke data and restores red-gas", async () => {
+    check("deletes empty smoke category", (await owner.request("DELETE", `/api/admin/categories/${category.id}`)).status === 204);
+    check("restores category order", (await owner.request("PUT", "/api/admin/categories/order", { ids: originalCategories.map((c) => c.id) })).status < 300);
+    check("logout is 204", (await owner.request("POST", "/api/auth/logout")).status === 204);
+
+    const counts = await prisma.business.findUnique({
+      where: { slug: "red-gas" },
+      select: { _count: { select: { categories: true, products: true, promotions: true, socialLinks: true, openingHours: true } } },
+    });
+    check("red-gas data restored", JSON.stringify(counts?._count) === JSON.stringify({ categories: 6, products: 18, promotions: 3, socialLinks: 2, openingHours: 7 }), counts?._count);
+  });
+});

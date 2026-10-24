@@ -14,7 +14,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "smoke:api": "tsx scripts/smoke-admin-api.ts"
+    "test": "jest",
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.e2e.config.mjs --runInBand"
   },
   "dependencies": {
     "@fontsource/archivo-black": "^5.2.8",
@@ -32,11 +33,14 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.6",
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
+    "jest": "^30.5.2",
+    "jest-environment-node": "^30.5.2",
     "prisma": "7.10.1",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.23.15",
