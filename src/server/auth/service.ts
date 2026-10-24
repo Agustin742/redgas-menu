@@ -3,6 +3,11 @@ import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { HttpError } from "@/server/http";
 import {
+  assertLoginAllowed,
+  clearFailedLogins,
+  recordFailedLogin,
+} from "@/server/auth/rate-limit";
+import {
   createSessionToken,
   setSessionCookie,
   type Session,
@@ -18,9 +23,13 @@ const DUMMY_HASH = `scrypt$${"00".repeat(16)}$${"00".repeat(64)}`;
 
 export async function login(
   input: z.infer<typeof loginSchema>,
+  ip: string,
 ): Promise<Session> {
+  const email = input.email.trim().toLowerCase();
+  await assertLoginAllowed(email, ip);
+
   const user = await prisma.user.findFirst({
-    where: { email: { equals: input.email, mode: "insensitive" } },
+    where: { email: { equals: email, mode: "insensitive" } },
     include: { business: { select: { id: true, slug: true, name: true } } },
   });
   const valid = await verifyPassword(
@@ -28,9 +37,11 @@ export async function login(
     user?.passwordHash ?? DUMMY_HASH,
   );
   if (!user || !valid) {
+    await recordFailedLogin(email, ip);
     throw new HttpError(401, "invalid_credentials", "Invalid email or password");
   }
 
+  await clearFailedLogins(email, ip);
   await setSessionCookie(
     await createSessionToken({
       userId: user.id,

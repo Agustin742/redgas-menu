@@ -146,3 +146,15 @@ model OpeningHours {
   @@index([businessId])
   @@map("opening_hours")
 }
+
+// Failed login attempts only. Not tied to a Business: emails may be unknown.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String // lowercased
+  ip        String
+  createdAt DateTime @default(now())
+
+  @@index([email, ip, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}

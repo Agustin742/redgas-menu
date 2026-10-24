@@ -9,6 +9,7 @@ export class HttpError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    readonly headers?: Record<string, string>,
   ) {
     super(message);
     this.name = "HttpError";
@@ -28,10 +29,11 @@ function errorResponse(
   code: string,
   message: string,
   details?: unknown,
+  headers?: Record<string, string>,
 ) {
   return NextResponse.json(
     { error: { code, message, ...(details === undefined ? {} : { details }) } },
-    { status },
+    { status, headers },
   );
 }
 
@@ -49,6 +51,7 @@ export function handle<C = unknown>(fn: Handler<C>): Handler<C> {
           error.code,
           error.message,
           error.details,
+          error.headers,
         );
       }
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

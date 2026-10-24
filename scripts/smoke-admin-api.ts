@@ -21,8 +21,20 @@ function check(label: string, condition: boolean, detail?: unknown) {
   }
 }
 
+// Fake client IPs (RFC 5737 / private ranges) so runs never lock the real owner.
+const usedIps: string[] = [];
+function freshIp() {
+  const rand = () => 1 + Math.floor(Math.random() * 254);
+  const ip = `10.${rand()}.${rand()}.${rand()}`;
+  usedIps.push(ip);
+  return ip;
+}
+
 class Client {
-  constructor(private cookie = "") {}
+  constructor(
+    private cookie = "",
+    private ip?: string,
+  ) {}
 
   async request(method: string, path: string, body?: unknown) {
     const response = await fetch(`${BASE_URL}${path}`, {
@@ -30,13 +42,18 @@ class Client {
       headers: {
         ...(body === undefined ? {} : { "content-type": "application/json" }),
         ...(this.cookie ? { cookie: this.cookie } : {}),
+        ...(this.ip ? { "x-forwarded-for": this.ip } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const setCookie = response.headers.get("set-cookie");
     if (setCookie) this.cookie = setCookie.split(";")[0];
     const text = await response.text();
-    return { status: response.status, data: text ? JSON.parse(text) : null };
+    return {
+      status: response.status,
+      data: text ? JSON.parse(text) : null,
+      retryAfter: response.headers.get("retry-after"),
+    };
   }
 
   login(email: string, password: string) {
@@ -49,15 +66,15 @@ type WithId = { id: string };
 async function main() {
   const email = process.env.SEED_OWNER_EMAIL!;
   const password = process.env.SEED_OWNER_PASSWORD!;
-  const owner = new Client();
-  const anonymous = new Client();
+  const owner = new Client("", freshIp());
+  const anonymous = new Client("", freshIp());
 
   console.log("auth");
   check("anonymous admin request is 401", (await anonymous.request("GET", "/api/admin/categories")).status === 401);
   check("me without session is 401", (await anonymous.request("GET", "/api/auth/me")).status === 401);
   check("wrong password is 401", (await anonymous.login(email, `${password}-wrong`)).status === 401);
   check("unknown email is 401", (await anonymous.login("nobody@example.com", password)).status === 401);
-  check("forged cookie is 401", (await new Client("session=eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.").request("GET", "/api/admin/categories")).status === 401);
+  check("forged cookie is 401", (await new Client("session=eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.", freshIp()).request("GET", "/api/admin/categories")).status === 401);
   const login = await owner.login(email.toUpperCase(), password);
   check("login succeeds (case-insensitive email)", login.status === 200 && login.data?.business?.slug === "red-gas", login);
   check("me returns session", (await owner.request("GET", "/api/auth/me")).status === 200);
@@ -140,7 +157,7 @@ async function main() {
     },
   });
   try {
-    const intruder = new Client();
+    const intruder = new Client("", freshIp());
     check("intruder logs in", (await intruder.login(intruderEmail, "intruder-password")).status === 200);
     check("intruder sees no categories", ((await intruder.request("GET", "/api/admin/categories")).data as unknown[]).length === 0);
     const victimId = originalCategories[0].id;
@@ -152,6 +169,23 @@ async function main() {
   } finally {
     await prisma.business.delete({ where: { id: intruderBusiness.id } });
   }
+
+  console.log("rate limit");
+  const wrong = `${password}-wrong`;
+  const blocked = new Client("", freshIp());
+  for (let i = 1; i <= 5; i++) {
+    check(`wrong attempt ${i} is 401`, (await blocked.login(email, wrong)).status === 401);
+  }
+  const limited = await blocked.login(email, wrong);
+  check("6th attempt is 429 too_many_attempts", limited.status === 429 && limited.data?.error?.code === "too_many_attempts", limited);
+  check("429 has numeric Retry-After >= 1", Number(limited.retryAfter) >= 1, limited.retryAfter);
+  check("correct password from blocked IP is still 429", (await blocked.login(email, password)).status === 429);
+  check("correct password from another IP is 200", (await new Client("", freshIp()).login(email, password)).status === 200);
+  const resetting = new Client("", freshIp());
+  for (let i = 1; i <= 4; i++) await resetting.login(email, wrong);
+  check("login after 4 failures succeeds", (await resetting.login(email, password)).status === 200);
+  check("success cleared the counter (next failure is 401)", (await resetting.login(email, wrong)).status === 401);
+  await prisma.loginAttempt.deleteMany({ where: { ip: { in: usedIps } } });
 
   console.log("cleanup");
   check("deletes empty smoke category", (await owner.request("DELETE", `/api/admin/categories/${category.id}`)).status === 204);
