@@ -6,6 +6,9 @@ export const imageUrlSchema = z
   .union([z.url({ protocol: /^https?$/ }), z.string().regex(/^\/(?!\/)/)])
   .refine((value) => value.length <= 2048, "Must be at most 2048 characters");
 
+/** Cloudinary public id; ownership is checked against the business folder. */
+export const publicIdSchema = z.string().max(255);
+
 export const idSchema = z.string().min(1).max(64);
 
 export const orderSchema = z.object({ ids: z.array(idSchema).max(500) });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { releaseImage, resolveImageRef } from "@/server/cloudinary";
 import { HttpError } from "@/server/http";
 import {
   assertSameIds,
@@ -7,6 +8,7 @@ import {
   idSchema,
   imageUrlSchema,
   notFound,
+  publicIdSchema,
 } from "@/server/validation";
 
 const fields = {
@@ -16,6 +18,7 @@ const fields = {
   categoryId: idSchema,
   imageUrl: imageUrlSchema.nullish(),
   imageAlt: z.string().trim().max(160).nullish(),
+  imagePublicId: publicIdSchema.nullish(),
   isAvailable: z.boolean(),
   isFeatured: z.boolean(),
 };
@@ -83,11 +86,13 @@ export async function createProduct(
   input: z.infer<typeof createProductSchema>,
 ) {
   await assertCategory(businessId, input.categoryId);
-  const { imageUrl, imageAlt, ...rest } = input;
+  const { imageUrl, imageAlt, imagePublicId, ...rest } = input;
+  const publicId = resolveImageRef(businessId, imageUrl, imagePublicId);
   return prisma.product.create({
     data: {
       ...rest,
       ...resolveImage(imageUrl, imageAlt),
+      imagePublicId: publicId ?? null,
       businessId,
       position: await nextPosition(businessId, input.categoryId),
     },
@@ -102,7 +107,13 @@ export async function updateProduct(
   const current = await prisma.product.findFirst({ where: { id, businessId } });
   if (!current) notFound("Product");
 
-  const { imageUrl, imageAlt, categoryId, ...rest } = input;
+  const { imageUrl, imageAlt, imagePublicId, categoryId, ...rest } = input;
+  const publicId = resolveImageRef(
+    businessId,
+    imageUrl,
+    imagePublicId,
+    current.imageUrl,
+  );
   const imageTouched = imageUrl !== undefined || imageAlt !== undefined;
   const moved = categoryId !== undefined && categoryId !== current.categoryId;
   if (moved) await assertCategory(businessId, categoryId);
@@ -117,17 +128,26 @@ export async function updateProduct(
             imageAlt !== undefined ? imageAlt : current.imageAlt,
           )
         : {}),
+      ...(publicId !== undefined ? { imagePublicId: publicId } : {}),
       ...(moved
         ? { categoryId, position: await nextPosition(businessId, categoryId) }
         : {}),
     },
   });
+  if (current.imagePublicId && publicId !== undefined && publicId !== current.imagePublicId) {
+    await releaseImage(current.imagePublicId);
+  }
   return prisma.product.findFirstOrThrow({ where: { id, businessId } });
 }
 
 export async function deleteProduct(businessId: string, id: string) {
-  const { count } = await prisma.product.deleteMany({ where: { id, businessId } });
-  if (count === 0) notFound("Product");
+  const current = await prisma.product.findFirst({
+    where: { id, businessId },
+    select: { imagePublicId: true },
+  });
+  if (!current) notFound("Product");
+  await prisma.product.deleteMany({ where: { id, businessId } });
+  if (current.imagePublicId) await releaseImage(current.imagePublicId);
 }
 
 export async function duplicateProduct(businessId: string, id: string) {
@@ -143,6 +163,7 @@ export async function duplicateProduct(businessId: string, id: string) {
       priceCents: source.priceCents,
       imageUrl: source.imageUrl,
       imageAlt: source.imageAlt,
+      imagePublicId: source.imagePublicId,
       isAvailable: false,
       isFeatured: source.isFeatured,
       position: await nextPosition(businessId, source.categoryId),

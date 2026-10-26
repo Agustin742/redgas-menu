@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { SocialPlatform } from "@/generated/prisma/enums";
-import { hasChanges, imageUrlSchema } from "@/server/validation";
+import { releaseImage, resolveImageRef } from "@/server/cloudinary";
+import { hasChanges, imageUrlSchema, publicIdSchema } from "@/server/validation";
 
 const businessFields = {
   name: z.string().trim().min(1).max(80),
@@ -9,6 +10,8 @@ const businessFields = {
   location: z.string().trim().min(1).max(160),
   logoUrl: imageUrlSchema,
   headerImageUrl: imageUrlSchema,
+  logoPublicId: publicIdSchema.nullish(),
+  headerImagePublicId: publicIdSchema.nullish(),
   contactEmail: z.email().max(254).nullable(),
 };
 
@@ -79,6 +82,8 @@ const businessSelect = {
   location: true,
   logoUrl: true,
   headerImageUrl: true,
+  logoPublicId: true,
+  headerImagePublicId: true,
   contactEmail: true,
   updatedAt: true,
 } as const;
@@ -90,15 +95,40 @@ export function getBusiness(businessId: string) {
   });
 }
 
-export function updateBusiness(
+export async function updateBusiness(
   businessId: string,
   input: z.infer<typeof updateBusinessSchema>,
 ) {
-  return prisma.business.update({
+  const current = await prisma.business.findUniqueOrThrow({
     where: { id: businessId },
-    data: input,
     select: businessSelect,
   });
+  const logoId = resolveImageRef(
+    businessId,
+    input.logoUrl,
+    input.logoPublicId,
+    current.logoUrl,
+  );
+  const headerId = resolveImageRef(
+    businessId,
+    input.headerImageUrl,
+    input.headerImagePublicId,
+    current.headerImageUrl,
+  );
+  const updated = await prisma.business.update({
+    where: { id: businessId },
+    data: { ...input, logoPublicId: logoId, headerImagePublicId: headerId },
+    select: businessSelect,
+  });
+  for (const [previous, next] of [
+    [current.logoPublicId, logoId],
+    [current.headerImagePublicId, headerId],
+  ] as const) {
+    if (previous && next !== undefined && next !== previous) {
+      await releaseImage(previous);
+    }
+  }
+  return updated;
 }
 
 export function listSocialLinks(businessId: string) {

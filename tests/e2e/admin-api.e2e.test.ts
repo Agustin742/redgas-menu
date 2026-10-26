@@ -197,6 +197,7 @@ describe("staff", () => {
     check("staff PUT social links is 403", (await staff.request("PUT", "/api/admin/business/social-links", { links: [] })).status === 403);
     check("staff PUT opening hours is 403", (await staff.request("PUT", "/api/admin/business/opening-hours", { hours: [] })).status === 403);
     const forbidden = await staff.request("GET", "/api/admin/staff");
+    check("staff signature for logo is 403", (await staff.request("POST", "/api/admin/uploads/signature", { target: "logo" })).status === 403);
     check("staff GET staff is 403 forbidden", forbidden.status === 403 && forbidden.data?.error?.code === "forbidden", forbidden);
     check("staff POST staff is 403", (await staff.request("POST", "/api/admin/staff", { ...staffBody, email: `other-${staffEmail}` })).status === 403);
     check("staff DELETE staff is 403", (await staff.request("DELETE", `/api/admin/staff/${staffId}`)).status === 403);
@@ -215,6 +216,29 @@ describe("staff", () => {
     check("owner removes staff 204", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 204);
     check("removed staff session is 401", (await staff.request("GET", "/api/auth/me")).status === 401);
     check("removing again is 404", (await owner.request("DELETE", `/api/admin/staff/${staffId}`)).status === 404);
+  });
+});
+
+describe("uploads", () => {
+  test("signs scoped uploads and rejects foreign public ids", async () => {
+    const path = "/api/admin/uploads/signature";
+    check("anonymous signature is 401", (await anonymous.request("POST", path, { target: "product" })).status === 401);
+    check("invalid target is 400", (await owner.request("POST", path, { target: "video" })).status === 400);
+    const signed = await owner.request("POST", path, { target: "product" });
+    const unavailable = signed.status === 503 && signed.data?.error?.code === "uploads_unavailable";
+    const ok = signed.status === 200 && /^coffee-menu\/[^/]+\/product$/.test(signed.data.folder) && typeof signed.data.signature === "string" && signed.data.cloudName !== undefined;
+    check("owner signature is 200 with a business folder, or 503 uploads_unavailable", unavailable || ok, signed);
+    const foreign = await owner.request("POST", "/api/admin/products", {
+      categoryId: category.id,
+      name: "Smoke foreign image",
+      description: "",
+      priceCents: 1,
+      imageUrl: "https://res.cloudinary.com/demo/image/upload/v1/coffee-menu/other-business/product/x.jpg",
+      imageAlt: "x",
+      imagePublicId: "coffee-menu/other-business/product/x",
+    });
+    check("foreign-folder public id is 400", foreign.status === 400, foreign);
+    check("public id without URL is 400", (await owner.request("POST", "/api/admin/products", { categoryId: category.id, name: "x", description: "", priceCents: 1, imagePublicId: "coffee-menu/x/product/x" })).status === 400);
   });
 });
 

@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { releaseImage, resolveImageRef } from "@/server/cloudinary";
 import { HttpError } from "@/server/http";
 import {
   assertSameIds,
   hasChanges,
   imageUrlSchema,
   notFound,
+  publicIdSchema,
 } from "@/server/validation";
 
 const date = z.iso.datetime({ offset: true }).transform((v) => new Date(v));
@@ -13,6 +15,7 @@ const date = z.iso.datetime({ offset: true }).transform((v) => new Date(v));
 const fields = {
   imageUrl: imageUrlSchema,
   imageAlt: z.string().trim().min(1).max(160),
+  imagePublicId: publicIdSchema.nullish(),
   isActive: z.boolean(),
   startsAt: date.nullish(),
   endsAt: date.nullish(),
@@ -48,12 +51,22 @@ export async function createPromotion(
   input: z.infer<typeof createPromotionSchema>,
 ) {
   assertRange(input.startsAt, input.endsAt);
+  const publicId = resolveImageRef(
+    businessId,
+    input.imageUrl,
+    input.imagePublicId,
+  );
   const last = await prisma.promotion.aggregate({
     where: { businessId },
     _max: { position: true },
   });
   return prisma.promotion.create({
-    data: { ...input, businessId, position: (last._max.position ?? -1) + 1 },
+    data: {
+      ...input,
+      imagePublicId: publicId ?? null,
+      businessId,
+      position: (last._max.position ?? -1) + 1,
+    },
   });
 }
 
@@ -68,14 +81,30 @@ export async function updatePromotion(
     input.startsAt !== undefined ? input.startsAt : current.startsAt,
     input.endsAt !== undefined ? input.endsAt : current.endsAt,
   );
-  return prisma.promotion.update({ where: { id }, data: input });
+  const publicId = resolveImageRef(
+    businessId,
+    input.imageUrl,
+    input.imagePublicId,
+    current.imageUrl,
+  );
+  const updated = await prisma.promotion.update({
+    where: { id },
+    data: { ...input, imagePublicId: publicId },
+  });
+  if (current.imagePublicId && publicId !== undefined && publicId !== current.imagePublicId) {
+    await releaseImage(current.imagePublicId);
+  }
+  return updated;
 }
 
 export async function deletePromotion(businessId: string, id: string) {
-  const { count } = await prisma.promotion.deleteMany({
+  const current = await prisma.promotion.findFirst({
     where: { id, businessId },
+    select: { imagePublicId: true },
   });
-  if (count === 0) notFound("Promotion");
+  if (!current) notFound("Promotion");
+  await prisma.promotion.deleteMany({ where: { id, businessId } });
+  if (current.imagePublicId) await releaseImage(current.imagePublicId);
 }
 
 export async function reorderPromotions(businessId: string, ids: string[]) {
