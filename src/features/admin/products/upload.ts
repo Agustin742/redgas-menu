@@ -1,3 +1,5 @@
+import { adminRequest } from "@/features/admin/api-errors";
+
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -73,4 +75,28 @@ export function uploadToCloudinary(
     };
     request.send(buildUploadFormData(file, signed));
   });
+}
+
+export type UploadTarget = "logo" | "header" | "product";
+
+export type UploadOutcome =
+  | { ok: true; image: UploadedImage }
+  | { ok: false; code: string | undefined };
+
+/** Asks the server for a signature for `target` and uploads the file straight to Cloudinary. */
+export async function uploadImage(
+  target: UploadTarget,
+  file: Blob,
+  onProgress: (fraction: number) => void,
+): Promise<UploadOutcome> {
+  const signed = await adminRequest<UploadSignature>("/api/admin/uploads/signature", {
+    method: "POST",
+    body: { target },
+  });
+  if (!signed.ok) return { ok: false, code: signed.code };
+  try {
+    return { ok: true, image: await uploadToCloudinary(file, signed.data, onProgress) };
+  } catch {
+    return { ok: false, code: "upload_failed" };
+  }
 }

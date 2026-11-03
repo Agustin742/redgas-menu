@@ -47,11 +47,13 @@ export function MenuFooter({ businessName, footer }: MenuFooterProps) {
                 <br />
                 {footer.openingHours}
               </p>
-              <p className="mt-4 break-words text-sm leading-relaxed text-cream/90">
-                <span className="font-semibold text-white">Contacto</span>
-                <br />
-                {footer.contactEmail}
-              </p>
+              {footer.contactEmail && (
+                <p className="mt-4 break-words text-sm leading-relaxed text-cream/90">
+                  <span className="font-semibold text-white">Contacto</span>
+                  <br />
+                  {footer.contactEmail}
+                </p>
+              )}
             </section>
 
             <section aria-labelledby="footer-social-heading" className="sm:border-l sm:border-cream/20 sm:pl-6">
@@ -71,7 +73,6 @@ export function MenuFooter({ businessName, footer }: MenuFooterProps) {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-cream/20 pt-5 text-xs leading-relaxed text-cream/75 sm:flex-row sm:items-center sm:justify-between">
-          <p>Datos ilustrativos de contacto y redes; reemplazar antes de publicar.</p>
           <p className="font-accent text-sm text-coffee-yellow">Hecho para disfrutar, sin apuro.</p>
         </div>
       </div>

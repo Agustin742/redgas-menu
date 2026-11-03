@@ -26,6 +26,7 @@ export function MenuHeader({ business }: MenuHeaderProps) {
             width={1080}
             height={1080}
             priority
+            unoptimized
             className="size-[clamp(2.5rem,10vw,6.5rem)] shrink-0 rounded-full object-cover"
           />
           <h1 className="min-w-0 whitespace-nowrap font-display text-[clamp(2.5rem,11vw,6.5rem)] leading-[0.92] tracking-[-0.06em] text-white">

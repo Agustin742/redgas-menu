@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CupIcon, HomeIcon, ListIcon } from "@/components/ui/icons";
+import { CupIcon, GearIcon, HomeIcon, ListIcon } from "@/components/ui/icons";
 
 const links = [
   { href: "/admin", label: "Inicio", Icon: HomeIcon },
   { href: "/admin/categories", label: "Categorías", Icon: ListIcon },
   { href: "/admin/products", label: "Productos", Icon: CupIcon },
+  { href: "/admin/settings", label: "Configuración", shortLabel: "Ajustes", Icon: GearIcon },
 ] as const;
 
 export function AdminNav() {
@@ -19,7 +20,8 @@ export function AdminNav() {
       className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 rounded-full bg-espresso p-1.5 shadow-[0_12px_32px_-12px_rgba(36,21,14,0.65)] md:static md:inset-auto md:rounded-none md:bg-transparent md:p-0 md:shadow-none"
     >
       <ul className="flex gap-1 md:flex-col md:gap-1.5">
-        {links.map(({ href, label, Icon }) => {
+        {links.map(({ href, label, Icon, ...rest }) => {
+          const shortLabel = "shortLabel" in rest ? rest.shortLabel : undefined;
           const active =
             href === "/admin" ? pathname === href : pathname.startsWith(href);
           return (
@@ -34,7 +36,14 @@ export function AdminNav() {
                 }`}
               >
                 <Icon />
-                {label}
+                {shortLabel ? (
+                  <>
+                    <span className="md:hidden">{shortLabel}</span>
+                    <span className="hidden md:inline">{label}</span>
+                  </>
+                ) : (
+                  label
+                )}
               </Link>
             </li>
           );

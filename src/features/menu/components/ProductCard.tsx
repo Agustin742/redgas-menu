@@ -23,7 +23,7 @@ export function ProductCard({ product }: ProductCardProps) {
           </h3>
           <p
             className="shrink-0 font-semibold tabular-nums text-espresso"
-            aria-label={`Precio ilustrativo: ${price}`}
+            aria-label={`Precio: ${price}`}
           >
             {price}
           </p>
@@ -48,7 +48,7 @@ export function ProductCard({ product }: ProductCardProps) {
       </p>
       <p
         className="mt-5 w-fit border-t-2 border-coffee-yellow pt-3 font-semibold tabular-nums text-espresso"
-        aria-label={`Precio ilustrativo: ${price}`}
+        aria-label={`Precio: ${price}`}
       >
         {price}
       </p>
