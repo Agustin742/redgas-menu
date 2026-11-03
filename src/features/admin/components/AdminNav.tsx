@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CupIcon, GearIcon, HomeIcon, ListIcon, TagIcon } from "@/components/ui/icons";
+import { CupIcon, GearIcon, HomeIcon, ListIcon, QrIcon, TagIcon } from "@/components/ui/icons";
 
 const links = [
   { href: "/admin", label: "Inicio", Icon: HomeIcon },
   { href: "/admin/categories", label: "Categorías", Icon: ListIcon },
   { href: "/admin/products", label: "Productos", Icon: CupIcon },
   { href: "/admin/promotions", label: "Promociones", shortLabel: "Promos", Icon: TagIcon },
+  { href: "/admin/qr", label: "QR", Icon: QrIcon, desktopOnly: true },
   { href: "/admin/settings", label: "Configuración", shortLabel: "Ajustes", Icon: GearIcon },
 ] as const;
 
@@ -23,10 +24,14 @@ export function AdminNav() {
       <ul className="flex md:flex-col md:gap-1.5">
         {links.map(({ href, label, Icon, ...rest }) => {
           const shortLabel = "shortLabel" in rest ? rest.shortLabel : undefined;
+          const desktopOnly = "desktopOnly" in rest;
           const active =
             href === "/admin" ? pathname === href : pathname.startsWith(href);
           return (
-            <li key={href} className="min-w-0 flex-1 md:flex-none">
+            <li
+              key={href}
+              className={`min-w-0 flex-1 md:flex-none ${desktopOnly ? "hidden md:block" : ""}`}
+            >
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}

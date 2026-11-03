@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CupIcon, GearIcon, ListIcon, TagIcon } from "@/components/ui/icons";
+import { CupIcon, GearIcon, ListIcon, QrIcon, TagIcon } from "@/components/ui/icons";
 import { plural, summarizeMenu } from "@/features/admin/menu-summary";
 import { getSession } from "@/server/auth/session";
 import { listCategories } from "@/server/categories/service";
@@ -30,6 +30,12 @@ const shortcuts = [
     label: "Promociones",
     description: "Subí banners, programá fechas y elegí cuáles se ven.",
     Icon: TagIcon,
+  },
+  {
+    href: "/admin/qr",
+    label: "Código QR",
+    description: "Descargá el QR de tu carta para imprimirlo en las mesas.",
+    Icon: QrIcon,
   },
   {
     href: "/admin/settings",
