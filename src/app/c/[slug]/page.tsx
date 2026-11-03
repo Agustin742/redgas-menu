@@ -1,42 +1,48 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryNav } from "@/features/menu/components/CategoryNav";
 import { MenuHeader } from "@/features/menu/components/MenuHeader";
 import { PromoCarousel } from "@/features/menu/components/PromoCarousel";
 import { CategorySection } from "@/features/menu/components/CategorySection";
 import { MenuFooter } from "@/features/menu/components/MenuFooter";
-import { redGasCategories } from "@/features/menu/mock-categories";
-import { redGasBusiness, redGasFooter } from "@/features/menu/mock-business";
-import { redGasMockProducts } from "@/features/menu/mock-products";
-import { redGasPromotions } from "@/features/menu/mock-promotions";
+import { getPublicMenu } from "@/server/public-menu/service";
 
-export default async function PublicMenuPage({
+type PageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+}: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const menu = await getPublicMenu(slug);
+  if (!menu) return {};
+  return {
+    title: `${menu.business.name} | Carta`,
+    description: menu.business.description,
+  };
+}
 
-  if (slug !== "red-gas") {
+export default async function PublicMenuPage({ params }: PageProps) {
+  const { slug } = await params;
+  const menu = await getPublicMenu(slug);
+
+  if (!menu) {
     notFound();
   }
 
-  const categoriesWithProducts = redGasCategories.filter((category) =>
-    redGasMockProducts.some((product) => product.categoryId === category.id),
-  );
   return (
     <main className="min-h-screen bg-cream">
-      <MenuHeader business={redGasBusiness} />
-      <PromoCarousel promotions={redGasPromotions} />
-      <CategoryNav categories={categoriesWithProducts} />
-      {categoriesWithProducts.map((category, index) => (
+      <MenuHeader business={menu.business} />
+      <PromoCarousel promotions={menu.promotions} />
+      <CategoryNav categories={menu.categories} />
+      {menu.categories.map((category, index) => (
         <CategorySection
           key={category.id}
           category={category}
-          products={redGasMockProducts}
+          products={menu.products}
           background={index % 2 === 0 ? "cream" : "white"}
         />
       ))}
-      <MenuFooter businessName={redGasBusiness.name} footer={redGasFooter} />
+      <MenuFooter businessName={menu.business.name} footer={menu.footer} />
     </main>
   );
 }
