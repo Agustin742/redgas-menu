@@ -4,6 +4,7 @@ odd/
 docs/
 node_modules/
 .next/
+.next-dev/
 
 # Environment and generated Prisma client
 .env
