@@ -77,7 +77,7 @@ export function uploadToCloudinary(
   });
 }
 
-export type UploadTarget = "logo" | "header" | "product";
+export type UploadTarget = "logo" | "header" | "product" | "promotion";
 
 export type UploadOutcome =
   | { ok: true; image: UploadedImage }

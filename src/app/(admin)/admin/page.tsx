@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CupIcon, GearIcon, ListIcon } from "@/components/ui/icons";
+import { CupIcon, GearIcon, ListIcon, TagIcon } from "@/components/ui/icons";
 import { plural, summarizeMenu } from "@/features/admin/menu-summary";
 import { getSession } from "@/server/auth/session";
 import { listCategories } from "@/server/categories/service";
@@ -24,6 +24,12 @@ const shortcuts = [
     label: "Productos",
     description: "Cargá platos y bebidas con precio, foto y disponibilidad.",
     Icon: CupIcon,
+  },
+  {
+    href: "/admin/promotions",
+    label: "Promociones",
+    description: "Subí banners, programá fechas y elegí cuáles se ven.",
+    Icon: TagIcon,
   },
   {
     href: "/admin/settings",

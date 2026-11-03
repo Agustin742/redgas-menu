@@ -129,3 +129,12 @@ export function GearIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function TagIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.3 13.2 13.2 20.3a1.5 1.5 0 0 1-2.1 0L3.5 12.7V3.5h9.2l7.6 7.6a1.5 1.5 0 0 1 0 2.1Z" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
