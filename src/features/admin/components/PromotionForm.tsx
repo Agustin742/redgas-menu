@@ -19,6 +19,7 @@ import {
   uploadImage,
   validateImageFile,
 } from "@/features/admin/products/upload";
+import { useUnsavedUpload } from "@/features/admin/uploads/useUnsavedUpload";
 
 export type PromotionFormValues = {
   id: string;
@@ -48,6 +49,7 @@ export function PromotionForm({ promotion }: { promotion?: PromotionFormValues }
 
 function PromotionFormFields({ promotion }: { promotion?: PromotionFormValues }) {
   const router = useRouter();
+  const unsaved = useUnsavedUpload();
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [image, setImage] = useState<ImageState | null>(
@@ -85,6 +87,7 @@ function PromotionFormFields({ promotion }: { promotion?: PromotionFormValues })
 
     const outcome = await uploadImage("promotion", file, setProgress);
     if (outcome.ok) {
+      unsaved.track(outcome.image.publicId);
       setImage({ url: outcome.image.url, publicId: outcome.image.publicId });
     } else if (outcome.code === "unauthorized") {
       router.replace("/login");
@@ -145,6 +148,7 @@ function PromotionFormFields({ promotion }: { promotion?: PromotionFormValues })
       return;
     }
 
+    unsaved.markSaved();
     router.push(`/admin/promotions?saved=${promotion ? "updated" : "created"}`);
     router.refresh();
   }

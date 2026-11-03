@@ -11,6 +11,7 @@ import {
   validateImageFile,
   type UploadTarget,
 } from "@/features/admin/products/upload";
+import { useUnsavedUpload } from "@/features/admin/uploads/useUnsavedUpload";
 import { SaveBar, SettingsCard, useCardStatus } from "./parts";
 
 type ImageState = { url: string; publicId: string | null };
@@ -141,6 +142,8 @@ export function ImagesCard({
   readOnly: boolean;
 }) {
   const card = useCardStatus();
+  const logoUpload = useUnsavedUpload();
+  const headerUpload = useUnsavedUpload();
   const [baseline, setBaseline] = useState(initial);
   const [logo, setLogo] = useState<ImageState>({ url: initial.logoUrl, publicId: null });
   const [header, setHeader] = useState<ImageState>({ url: initial.headerImageUrl, publicId: null });
@@ -189,6 +192,8 @@ export function ImagesCard({
     }
     setErrors({});
     setBaseline({ logoUrl: logo.url, headerImageUrl: header.url });
+    logoUpload.markSaved();
+    headerUpload.markSaved();
     card.succeed();
   }
 
@@ -209,6 +214,7 @@ export function ImagesCard({
           readOnly={readOnly}
           error={errors.logo}
           onUploaded={(image) => {
+            if (image.publicId) logoUpload.track(image.publicId);
             setLogo(image);
             setErrors((current) => ({ ...current, logo: "" }));
             card.reset();
@@ -226,6 +232,7 @@ export function ImagesCard({
           readOnly={readOnly}
           error={errors.header}
           onUploaded={(image) => {
+            if (image.publicId) headerUpload.track(image.publicId);
             setHeader(image);
             setErrors((current) => ({ ...current, header: "" }));
             card.reset();

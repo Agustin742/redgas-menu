@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import {
   assertOwnedImage,
+  discardUnsavedImage,
+  uploadTargetOf,
   releaseImage,
   resolveImageRef,
   signUpload,
@@ -123,5 +125,63 @@ describe("releaseImage", () => {
       "https://api.cloudinary.com/v1_1/demo/image/destroy",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+});
+
+describe("uploadTargetOf", () => {
+  test("returns the target of an id inside the business folder", () => {
+    expect(uploadTargetOf("biz-1", publicId)).toBe("product");
+    expect(uploadTargetOf("biz-1", "coffee-menu/biz-1/logo/x")).toBe("logo");
+  });
+
+  test("rejects other businesses, unknown targets, traversal and bare folders", () => {
+    expect(uploadTargetOf("biz-2", publicId)).toBeNull();
+    expect(uploadTargetOf("biz-1", "coffee-menu/biz-1/other/x")).toBeNull();
+    expect(uploadTargetOf("biz-1", "coffee-menu/biz-1/product/../../biz-2/product/x")).toBeNull();
+    expect(uploadTargetOf("biz-1", "coffee-menu/biz-1/product/")).toBeNull();
+    expect(uploadTargetOf("biz-1", "coffee-menu/biz-10/product/x")).toBeNull();
+  });
+});
+
+describe("discardUnsavedImage", () => {
+  const owner = { id: "biz-1", role: "OWNER" as const };
+  const staff = { id: "biz-1", role: "STAFF" as const };
+
+  function unreferenced() {
+    count.product.mockResolvedValue(0);
+    count.promotion.mockResolvedValue(0);
+    count.business.mockResolvedValue(0);
+    fetchMock.mockResolvedValue({ ok: true });
+  }
+
+  test("destroys an owned, unreferenced product image for any role", async () => {
+    unreferenced();
+    await expect(discardUnsavedImage(staff, publicId)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("is a no-op for an id outside the business folder", async () => {
+    unreferenced();
+    await expect(discardUnsavedImage(owner, "coffee-menu/biz-2/product/x")).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(count.product).not.toHaveBeenCalled();
+  });
+
+  test("is a no-op while a row still references the image", async () => {
+    unreferenced();
+    count.promotion.mockResolvedValue(1);
+    await expect(discardUnsavedImage(owner, publicId)).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("logo and header need the owner role", async () => {
+    unreferenced();
+    const logoId = "coffee-menu/biz-1/logo/abc";
+    await expect(discardUnsavedImage(staff, logoId)).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(discardUnsavedImage(owner, logoId)).resolves.toBe(true);
   });
 });

@@ -165,3 +165,47 @@ export async function releaseImage(publicId: string) {
     console.error("Releasing image failed", publicId, error);
   }
 }
+
+/**
+ * The upload target of a public id that lives in this business's folder
+ * (`coffee-menu/<businessId>/<target>/<name>`), or null for anything else.
+ */
+export function uploadTargetOf(
+  businessId: string,
+  publicId: string,
+): UploadTarget | null {
+  const prefix = `${businessFolder(businessId)}/`;
+  if (!publicId.startsWith(prefix) || publicId.includes("..")) return null;
+  const [target, ...name] = publicId.slice(prefix.length).split("/");
+  const known = uploadTargets.find((candidate) => candidate === target);
+  return known && name.length > 0 && name.every(Boolean) ? known : null;
+}
+
+/**
+ * Discards an image that was uploaded but never saved. A no-op (resolves false)
+ * for ids outside this business's folder and for assets still referenced by a
+ * product, promotion or business row; logo and header need the OWNER role, like
+ * their upload signature.
+ */
+export async function discardUnsavedImage(
+  business: { id: string; role: "OWNER" | "STAFF" },
+  publicId: string,
+) {
+  const target = uploadTargetOf(business.id, publicId);
+  if (!target) return false;
+  if ((target === "logo" || target === "header") && business.role !== "OWNER") {
+    throw new HttpError(403, "forbidden", "Owner role required");
+  }
+  const [products, promotions, businesses] = await Promise.all([
+    prisma.product.count({ where: { imagePublicId: publicId } }),
+    prisma.promotion.count({ where: { imagePublicId: publicId } }),
+    prisma.business.count({
+      where: {
+        OR: [{ logoPublicId: publicId }, { headerImagePublicId: publicId }],
+      },
+    }),
+  ]);
+  if (products + promotions + businesses > 0) return false;
+  await destroyImage(publicId);
+  return true;
+}

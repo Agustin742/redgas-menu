@@ -16,6 +16,7 @@ import {
   validateImageFile,
   type UploadSignature,
 } from "@/features/admin/products/upload";
+import { useUnsavedUpload } from "@/features/admin/uploads/useUnsavedUpload";
 
 export type ProductFormCategory = { id: string; name: string; isVisible: boolean };
 
@@ -48,6 +49,7 @@ export function ProductForm({
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
+  const unsaved = useUnsavedUpload();
 
   const [name, setName] = useState(product?.name ?? "");
   const [description, setDescription] = useState(product?.description ?? "");
@@ -104,6 +106,7 @@ export function ProductForm({
 
     try {
       const uploaded = await uploadToCloudinary(file, signed.data, setProgress);
+      unsaved.track(uploaded.publicId);
       setImage({ url: uploaded.url, publicId: uploaded.publicId });
     } catch {
       setUploadError("No pudimos subir la foto. Probá de nuevo.");
@@ -171,6 +174,7 @@ export function ProductForm({
       return;
     }
 
+    unsaved.markSaved();
     router.push(`/admin/products?saved=${product ? "updated" : "created"}`);
     router.refresh();
   }
@@ -329,6 +333,7 @@ export function ProductForm({
                   aria-label="Quitar foto"
                   title="Quitar foto"
                   onClick={() => {
+                    unsaved.discard();
                     setImage(null);
                     setAltText("");
                   }}
