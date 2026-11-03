@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { BusinessCard } from "@/features/admin/components/settings/BusinessCard";
 import { HoursCard } from "@/features/admin/components/settings/HoursCard";
 import { ImagesCard } from "@/features/admin/components/settings/ImagesCard";
+import { PasswordCard } from "@/features/admin/components/settings/PasswordCard";
 import { SocialCard } from "@/features/admin/components/settings/SocialCard";
 import { getSession } from "@/server/auth/session";
 import {
@@ -64,6 +65,7 @@ export default async function SettingsPage() {
           readOnly={readOnly}
           initial={links.map(({ platform, handle, url }) => ({ platform, handle, url }))}
         />
+        <PasswordCard />
       </div>
     </div>
   );
