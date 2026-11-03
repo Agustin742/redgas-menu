@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ListIcon } from "@/components/ui/icons";
+import { CupIcon, ListIcon } from "@/components/ui/icons";
 import { plural, summarizeMenu } from "@/features/admin/menu-summary";
 import { getSession } from "@/server/auth/session";
 import { listCategories } from "@/server/categories/service";
@@ -18,6 +18,12 @@ const shortcuts = [
     label: "Categorías",
     description: "Creá, ordená y ocultá las secciones de la carta.",
     Icon: ListIcon,
+  },
+  {
+    href: "/admin/products",
+    label: "Productos",
+    description: "Cargá platos y bebidas con precio, foto y disponibilidad.",
+    Icon: CupIcon,
   },
 ] as const;
 

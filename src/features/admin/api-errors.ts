@@ -25,7 +25,7 @@ export function adminErrorMessage(code: string | undefined): string {
 
 export type AdminResult<T> =
   | { ok: true; data: T }
-  | { ok: false; code: string | undefined };
+  | { ok: false; code: string | undefined; details?: unknown };
 
 /** Calls the admin API and normalizes failures into an error code. */
 export async function adminRequest<T = unknown>(
@@ -45,9 +45,13 @@ export async function adminRequest<T = unknown>(
       return { ok: true, data: data as T };
     }
     const body = (await response.json().catch(() => null)) as {
-      error?: { code?: string };
+      error?: { code?: string; details?: unknown };
     } | null;
-    return { ok: false, code: body?.error?.code ?? `http_${response.status}` };
+    return {
+      ok: false,
+      code: body?.error?.code ?? `http_${response.status}`,
+      details: body?.error?.details,
+    };
   } catch {
     return { ok: false, code: undefined };
   }

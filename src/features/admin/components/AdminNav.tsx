@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { HomeIcon, ListIcon } from "@/components/ui/icons";
+import { CupIcon, HomeIcon, ListIcon } from "@/components/ui/icons";
 
 const links = [
   { href: "/admin", label: "Inicio", Icon: HomeIcon },
   { href: "/admin/categories", label: "Categorías", Icon: ListIcon },
+  { href: "/admin/products", label: "Productos", Icon: CupIcon },
 ] as const;
 
 export function AdminNav() {
@@ -26,7 +27,7 @@ export function AdminNav() {
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coffee-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-espresso md:justify-start ${
+                className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full px-2 text-xs font-semibold md:min-h-11 md:flex-row md:gap-2 md:px-4 md:text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coffee-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-espresso md:justify-start ${
                   active
                     ? "bg-coffee-yellow text-espresso"
                     : "text-cream/80 hover:bg-white/10 hover:text-white"
