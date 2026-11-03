@@ -8,8 +8,7 @@ import "@fontsource/bree-serif/400.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Red Gas | Carta",
-  description: "La carta de Red Gas, café y cosas ricas.",
+  title: "Carta digital",
 };
 
 export default function RootLayout({
