@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { AppButton } from "@/components/ui/AppButton";
 import {
   ArrowDownIcon,
@@ -54,12 +54,18 @@ export function ProductsManager({
   notice?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [refreshing, startRefresh] = useTransition();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(
     notice ? { kind: "ok", text: notice } : null,
   );
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  // The notice is already in state: drop `?saved=` so a reload does not repeat it.
+  useEffect(() => {
+    if (notice) router.replace(pathname, { scroll: false });
+  }, [notice, pathname, router]);
 
   const disabled = busy || refreshing;
   const total = groups.reduce((sum, group) => sum + group.products.length, 0);
