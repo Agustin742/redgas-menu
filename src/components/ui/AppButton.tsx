@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 type AppButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "danger";
   loading?: boolean;
 };
 
@@ -9,6 +9,8 @@ const variants = {
   primary:
     "border-espresso bg-espresso text-white hover:bg-roast hover:border-roast",
   secondary: "border-warm-border bg-white text-espresso hover:bg-cream",
+  danger:
+    "border-[#b45309] bg-[#b45309] text-white hover:bg-[#92400e] hover:border-[#92400e]",
 } as const;
 
 export function AppButton({
