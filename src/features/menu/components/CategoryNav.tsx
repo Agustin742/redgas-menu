@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import type { MenuCategory } from "@/features/menu/types";
 
 type CategoryNavProps = {
   categories: MenuCategory[];
+  selectedCategoryId: MenuCategory["id"] | null;
+  onSelect: (categoryId: MenuCategory["id"]) => void;
 };
 
-export function CategoryNav({ categories }: CategoryNavProps) {
-  const [selectedCategoryId, setSelectedCategoryId] = useState(
-    categories[0]?.id ?? null,
-  );
-
+export function CategoryNav({
+  categories,
+  selectedCategoryId,
+  onSelect,
+}: CategoryNavProps) {
   return (
     <section
       aria-labelledby="category-preview-heading"
@@ -37,7 +38,7 @@ export function CategoryNav({ categories }: CategoryNavProps) {
                   <button
                     type="button"
                     aria-pressed={isSelected}
-                    onClick={() => setSelectedCategoryId(category.id)}
+                    onClick={() => onSelect(category.id)}
                     className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-espresso focus-visible:ring-offset-2 ${
                       isSelected
                         ? "border-espresso bg-espresso text-white"

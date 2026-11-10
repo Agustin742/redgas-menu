@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CategoryNav } from "@/features/menu/components/CategoryNav";
 import { MenuHeader } from "@/features/menu/components/MenuHeader";
 import { PromoCarousel } from "@/features/menu/components/PromoCarousel";
-import { CategorySection } from "@/features/menu/components/CategorySection";
+import { MenuSections } from "@/features/menu/components/MenuSections";
 import { MenuFooter } from "@/features/menu/components/MenuFooter";
 import { getPublicMenu } from "@/server/public-menu/service";
 
@@ -33,15 +32,7 @@ export default async function PublicMenuPage({ params }: PageProps) {
     <main className="min-h-screen bg-cream">
       <MenuHeader business={menu.business} />
       <PromoCarousel promotions={menu.promotions} />
-      <CategoryNav categories={menu.categories} />
-      {menu.categories.map((category, index) => (
-        <CategorySection
-          key={category.id}
-          category={category}
-          products={menu.products}
-          background={index % 2 === 0 ? "cream" : "white"}
-        />
-      ))}
+      <MenuSections categories={menu.categories} products={menu.products} />
       <MenuFooter businessName={menu.business.name} footer={menu.footer} />
     </main>
   );
